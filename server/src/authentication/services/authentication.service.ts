@@ -1,33 +1,33 @@
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
-import { PrismaService } from 'src/utils/prisma/prisma.service';
-import { RegisterDto } from '../models/register.dto';
-import { exclude } from '../utils/exclude';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { UserService } from 'src/user/services/user.service';
 import * as bcrypt from 'bcrypt';
+import { RegisterDto } from '../models/register.dto';
 
 @Injectable()
 export class AuthenticationService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private userService: UserService) {}
 
-  async register(registrationData: RegisterDto) {
-    const hashpassword = await bcrypt.hash(registrationData.password, 10);
+  async register(signUp: RegisterDto) {
+    return await this.userService.create(signUp);
+  }
 
-    try {
-      const createdUser = await this.prisma.user.create({
-        data: {
-          email: registrationData.email,
-          password: hashpassword,
-        },
-      });
-      const userWithoutPassowrd = exclude(createdUser, 'password');
-      return userWithoutPassowrd;
-    } catch (error) {
-      if (error.code === 'P2002') {
-        throw new HttpException('Email already exists', HttpStatus.BAD_REQUEST);
-      }
-      throw new HttpException(
-        'Something went wrong',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+  async login(email: string, pass: string) {
+    const user = await this.userService.findOne(email);
+
+    if (!user) {
+      throw new UnauthorizedException('User not found.');
     }
+
+    if (!(await this.checkPassword(pass, user.password as string))) {
+      throw new UnauthorizedException('Wrong password');
+    }
+
+    delete user.password;
+
+    return user;
+  }
+
+  async checkPassword(password: string, hashPass: string) {
+    return bcrypt.compare(password, hashPass);
   }
 }
